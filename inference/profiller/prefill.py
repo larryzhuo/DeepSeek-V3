@@ -24,7 +24,7 @@ def prefill_mla_elapse_time(args:ModelArgs, gpu:GPU_perf, seq_len, kv_cache_rate
     print("ATTN_FP16 Elapsed time(ms): %.3f" % attn_fp16_time)
     total_time = gemm_fp8_time + attn_fp16_time
     print("Total Elapsed time(ms):%.3f" % total_time)
-    
+
     # 计算 MLA 的 All-Reduce 通信耗时：
     """
     这里计算可能有错误？？
@@ -53,6 +53,13 @@ def prefill_mla(args:ModelArgs, gpu_dict, seq_len, kv_cache_rate):
     return 3 * seq_len * args.dim * args.inter_dim *2/1e9
 
 def densmlp_flops(args:ModelArgs, seq_len):
+    """
+    3 是 class MLP 中的 w1, w2, w3 三次线性转换
+    `w1` 和 `w3`：输入 x 分别投影到 inter_dim，各需 seq_len * dim * inter_dim * 2 FLOPs。
+`w2`：门控结果投影回 dim，需 seq_len * inter_dim * dim * 2 FLOPs。
+    linear线性变化F.linear(x, weight, bias)本质上是矩阵乘法
+    输入 x 形状 [seq_len, dim]，分别与 w1 和 w3（形状 [dim, inter_dim]）相乘，需要 dim*seq_len*inter_dim 次浮点数相乘和加法计算
+    """
     return 3 * seq_len * args.dim * args.inter_dim *2/1e9
 
 def dense_mlp_elapse_time(args:ModelArgs,gpu:GPU_perf, seq_len):
@@ -81,7 +88,7 @@ def moe_expert_elapse_time(args:ModelArgs,gpu:GPU_perf, seq_len, tp, dp):
     
     什么场景下会需要在 MOE 中做 tp 拆分呢？
     就是单个专家太大了，一张卡放不下来，才会需要引入 tp
-    如果专家很小，单卡能放下，那每个专家就只在一张卡上，这时没必要再用 TP，直接 EP 就行
+    如果专家很小，单卡能放下，那每个专家就只在一张卡上，这时没必要再用 TP,直接 EP 就行
     """
     num_device = tp * dp # 所有节点有多少卡
     num_shared_token = dp * seq_len / num_device
@@ -93,7 +100,6 @@ def moe_expert_elapse_time(args:ModelArgs,gpu:GPU_perf, seq_len, tp, dp):
     routed_flops = moe_expert_flops(args, num_routed_token)
     routed_time = routed_flops / gpu.get_fp8_flops()
     print("Routed Expert Elapsed time(ms): %.3f" % routed_time)
-
     return shared_time, routed_time
 
 def prefill_moe(args:ModelArgs, gpu_dict, seq_len, tp, dp ):

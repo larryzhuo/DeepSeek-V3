@@ -5,7 +5,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from model import ModelArgs,MLA,Expert,MLP
 import json
-from argparse import ArgumentParser
 from ptflops import get_model_complexity_info
 import torch
 
